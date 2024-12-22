@@ -91,6 +91,17 @@
     (is-eq tx-sender (var-get contract-administrator))
 )
 
+;; Principal validation function
+(define-private (is-valid-principal (address principal))
+    (and 
+        (not (is-eq address tx-sender))  ;; Prevent self-assignment
+        (not (is-eq address (var-get contract-administrator)))  ;; Prevent current admin reassignment
+        (match (principal-destruct? address)
+            success true  ;; If principal-destruct succeeds, the principal is valid
+            error false) ;; If it fails, the principal is invalid
+    )
+)
+
 ;; String validation functions
 (define-private (validate-short-string (input (string-ascii 32)))
     (> (len input) MINIMUM-DATA-LENGTH)
@@ -136,6 +147,7 @@
 (define-public (transfer-administrator-rights (new-administrator principal))
     (begin
         (asserts! (is-contract-administrator) ERROR-ADMIN-ONLY-OPERATION)
+        (asserts! (is-valid-principal new-administrator) ERROR-INVALID-DATA-FORMAT)
         (ok (var-set contract-administrator new-administrator))
     )
 )
@@ -147,6 +159,7 @@
     (license-expiry uint))
     (begin
         (asserts! (is-contract-administrator) ERROR-UNAUTHORIZED-ACCESS)
+        (asserts! (is-valid-principal provider-address) ERROR-INVALID-DATA-FORMAT)
         (asserts! (validate-very-short-string medical-role) ERROR-INVALID-DATA-FORMAT)
         (asserts! (validate-long-string facility-name) ERROR-INVALID-DATA-FORMAT)
         (asserts! (validate-future-timestamp license-expiry) ERROR-INVALID-EXPIRATION-DATE)
@@ -346,7 +359,7 @@
 (define-read-only (verify-batch-validity (batch-identifier (string-ascii 32)))
     (match (map-get? vaccine-inventory {batch-identifier: batch-identifier})
         batch-details (and
-        (is-eq (get current-batch-status batch-details) "active")
+            (is-eq (get current-batch-status batch-details) "active")
             (> (get remaining-doses batch-details) u0)
             (<= CURRENT-BLOCKCHAIN-HEIGHT (get expiration-date batch-details))
             (<= (get temperature-violation-count batch-details) u2))
